@@ -35,6 +35,13 @@
         <div class="canvasBox">
           <canvas id="preview"></canvas>
         </div>
+        <label class="inline">文字の向き
+          <select id="direction">
+            <option value="auto">自動で判定</option>
+            <option value="h">横書き</option>
+            <option value="v">縦書き</option>
+          </select>
+        </label>
         <div class="buttons">
           <button id="btnOcr" class="big primary" type="button">🔍 文字を読み取る</button>
           <button id="btnClearSel" type="button">囲みを消す</button>

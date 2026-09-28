@@ -124,6 +124,16 @@ button:disabled {
   height: auto;
 }
 
+.inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  white-space: nowrap;
+}
+
+.inline select { flex: 1; }
+
 .status {
   display: flex;
   align-items: center;

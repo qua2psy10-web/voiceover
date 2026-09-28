@@ -156,23 +156,46 @@ preview.addEventListener('pointerup', () => {
 $('btnClearSel').addEventListener('click', () => { selection = null; drawPreview(); });
 
 // ---------- 文字認識（OCR） ----------
-let workerPromise = null;
+// 横書き用と縦書き用で読み取りデータが違うので、別々に用意する
+const LANGS = { h: 'jpn+eng', v: 'jpn_vert' };
+const workers = {};
 let ocrBusy = false;
-function getWorker() {
-  if (!workerPromise) {
-    workerPromise = Tesseract.createWorker('jpn+eng', 1, {
+function getWorker(dir) {
+  if (!workers[dir]) {
+    const dataLabel = dir === 'v' ? '縦書き用データを読み込み中…' : '日本語データを読み込み中…';
+    workers[dir] = Tesseract.createWorker(LANGS[dir], 1, {
       logger: (m) => {
         const labels = {
           'loading tesseract core': '準備中…',
-          'loading language traineddata': '日本語データを読み込み中…（初回のみ時間がかかります）',
+          'loading language traineddata': dataLabel + '（初回のみ時間がかかります）',
           'initializing api': '準備中…',
-          'recognizing text': '文字を読み取り中…',
+          'recognizing text': dir === 'v' ? '縦書きとして読み取り中…' : '文字を読み取り中…',
         };
         if (ocrBusy) showStatus(labels[m.status] || '処理中…', m.progress);
       },
-    }).catch((err) => { workerPromise = null; throw err; });
+    }).then(async (w) => {
+      // ページ全体のレイアウトを自動で解析する（縦書きの列を見つけるのに必要）
+      await w.setParameters({ tessedit_pageseg_mode: Tesseract.PSM.AUTO });
+      return w;
+    }).catch((err) => { delete workers[dir]; throw err; });
   }
-  return workerPromise;
+  return workers[dir];
+}
+
+async function recognize(dir, image) {
+  const worker = await getWorker(dir);
+  const { data } = await worker.recognize(image);
+  return data;
+}
+
+// 自動のときは横書きで読み、自信が低ければ縦書きでも読んで良いほうを使う
+async function recognizeAuto(image) {
+  const mode = $('direction').value;
+  if (mode !== 'auto') return recognize(mode, image);
+  const h = await recognize('h', image);
+  if (h.confidence >= 80) return h;
+  const v = await recognize('v', image);
+  return v.confidence > h.confidence ? v : h;
 }
 
 function showStatus(label, progress) {
@@ -188,9 +211,7 @@ $('btnOcr').addEventListener('click', async () => {
   stop();
   try {
     showStatus('準備中…', 0);
-    const worker = await getWorker();
-    const target = cropForOcr();
-    const { data } = await worker.recognize(target);
+    const data = await recognizeAuto(cropForOcr());
     ocrBusy = false;
     const text = cleanOcrText(data.text);
     if (!text) {
@@ -291,6 +312,8 @@ for (const id of ['rate', 'pitch']) {
   input.addEventListener('change', () => { store.set(id, input.value); restartIfPlaying(); });
 }
 $('autoPlay').checked = store.get('autoPlay', true);
+$('direction').value = store.get('direction', 'auto');
+$('direction').addEventListener('change', () => store.set('direction', $('direction').value));
 $('autoPlay').addEventListener('change', () => store.set('autoPlay', $('autoPlay').checked));
 
 // 文ごとに区切る（長すぎる文は読点でさらに分ける）
