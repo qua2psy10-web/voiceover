@@ -1,0 +1,16 @@
+{
+  "name": "画面よみあげ",
+  "short_name": "よみあげ",
+  "description": "スクリーンショットや画面共有から文字を読み取り、音声で読み上げるアプリ",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f4f6f8",
+  "theme_color": "#1f5f8b",
+  "lang": "ja",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
