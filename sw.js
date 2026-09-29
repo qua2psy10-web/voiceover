@@ -1,5 +1,6 @@
 // アプリ本体と文字認識ライブラリを端末に保存し、2回目以降は通信なしでも開けるようにする
-const CACHE = 'yomiage-v1';
+const CACHE_PREFIX = 'yomiage-';
+const CACHE = CACHE_PREFIX + 'v2';
 const APP = ['./', 'index.html', 'style.css', 'app.js', 'manifest.webmanifest', 'icon.svg', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', (e) => {
@@ -9,7 +10,7 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => k.startsWith(CACHE_PREFIX) && k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });

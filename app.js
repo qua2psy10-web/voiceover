@@ -18,6 +18,11 @@ const store = {
 // ---------- 1. 取り込み ----------
 const source = document.createElement('canvas'); // 元画像（原寸）
 const preview = $('preview');                    // 表示用
+let contentRevision = 0;
+function invalidateOcr() {
+  contentRevision++;
+  if (ocrBusy) showStatus('内容が変更されたため、処理中の読み取り結果は反映しません。', 0);
+}
 let selection = null;                            // 元画像座標での囲み {x, y, w, h}
 
 const canCapture = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
@@ -48,6 +53,8 @@ $('btnCapture').addEventListener('click', async () => {
     stream.getTracks().forEach((t) => t.stop());
   }
 });
+
+$('btnFile').addEventListener('click', () => $('fileInput').click());
 
 $('fileInput').addEventListener('change', async (e) => {
   const file = e.target.files[0];
@@ -96,6 +103,7 @@ async function loadImageFile(blob) {
 }
 
 function loadImage(el, w, h) {
+  invalidateOcr();
   source.width = w;
   source.height = h;
   source.getContext('2d').drawImage(el, 0, 0, w, h);
@@ -160,6 +168,7 @@ $('btnClearSel').addEventListener('click', () => { selection = null; drawPreview
 const LANGS = { h: 'jpn+eng', v: 'jpn_vert' };
 const workers = {};
 let ocrBusy = false;
+let ocrRevision = 0;
 function getWorker(dir) {
   if (!workers[dir]) {
     const dataLabel = dir === 'v' ? '縦書き用データを読み込み中…' : '日本語データを読み込み中…';
@@ -171,7 +180,7 @@ function getWorker(dir) {
           'initializing api': '準備中…',
           'recognizing text': dir === 'v' ? '縦書きとして読み取り中…' : '文字を読み取り中…',
         };
-        if (ocrBusy) showStatus(labels[m.status] || '処理中…', m.progress);
+        if (ocrBusy && ocrRevision === contentRevision) showStatus(labels[m.status] || '処理中…', m.progress);
       },
     }).then(async (w) => {
       // ページ全体のレイアウトを自動で解析する（縦書きの列を見つけるのに必要）
@@ -194,8 +203,13 @@ async function recognizeAuto(image) {
   if (mode !== 'auto') return recognize(mode, image);
   const h = await recognize('h', image);
   if (h.confidence >= 80) return h;
-  const v = await recognize('v', image);
-  return v.confidence > h.confidence ? v : h;
+  try {
+    const v = await recognize('v', image);
+    return v.confidence > h.confidence ? v : h;
+  } catch (err) {
+    if (!h.text.trim()) throw err;
+    return { ...h, warning: '縦書きの確認ができなかったため、横書きの結果を表示しています。' };
+  }
 }
 
 function showStatus(label, progress) {
@@ -205,6 +219,9 @@ function showStatus(label, progress) {
 }
 
 $('btnOcr').addEventListener('click', async () => {
+  if (ocrBusy) return;
+  const revision = contentRevision;
+  ocrRevision = revision;
   const btn = $('btnOcr');
   btn.disabled = true;
   ocrBusy = true;
@@ -213,15 +230,18 @@ $('btnOcr').addEventListener('click', async () => {
     showStatus('準備中…', 0);
     const data = await recognizeAuto(cropForOcr());
     ocrBusy = false;
+    if (revision !== contentRevision) return;
     const text = cleanOcrText(data.text);
     if (!text) {
       showStatus('文字が見つかりませんでした。範囲を囲み直すか、画像を拡大して試してください。', 0);
       return;
     }
     setText(text);
-    $('ocrStatus').hidden = true;
+    if (data.warning) showStatus(data.warning, 1);
+    else $('ocrStatus').hidden = true;
     if ($('autoPlay').checked) play();
   } catch (err) {
+    if (revision !== contentRevision) return;
     console.error(err);
     showStatus('読み取りに失敗しました。通信状態を確認して、もう一度お試しください。', 0);
   } finally {
@@ -256,11 +276,16 @@ function cleanOcrText(raw) {
 
 // ---------- 2. 文章 ----------
 function setText(text) {
+  invalidateOcr();
+  stop();
   $('text').value = text;
   store.set('text', text);
 }
 $('text').value = store.get('text', '');
-$('text').addEventListener('input', () => store.set('text', $('text').value));
+$('text').addEventListener('input', () => {
+  invalidateOcr();
+  store.set('text', $('text').value);
+});
 
 // ---------- 3. 読み上げ ----------
 const synth = window.speechSynthesis;
@@ -272,7 +297,7 @@ let paused = false;
 let generation = 0;  // 停止・再開のたびに増やし、古い発話のイベントを無視する
 
 function loadVoices() {
-  voices = synth.getVoices();
+  voices = synth.getVoices().filter((v) => v.localService === true);
   const select = $('voice');
   const saved = store.get('voice', '');
   const ja = voices.filter((v) => v.lang.toLowerCase().startsWith('ja'));
@@ -294,6 +319,9 @@ function loadVoices() {
   addGroup('その他の言語', others);
   if (voices.some((v) => v.voiceURI === saved)) select.value = saved;
   else if (ja.length) select.value = (ja.find((v) => v.default) || ja[0]).voiceURI;
+  else if (voices.length) select.value = voices[0].voiceURI;
+  $('voiceStatus').textContent = voices.length ? '端末内の音声のみ使用します。' : '端末内の音声が見つかりません。端末の音声設定で音声を追加してから、ページを開き直してください。';
+  updateButtons();
 }
 if (synth) {
   loadVoices();
@@ -347,6 +375,9 @@ function renderReader(text) {
     const span = document.createElement('span');
     span.textContent = c.text;
     span.dataset.i = i;
+    span.tabIndex = 0;
+    span.setAttribute('role', 'button');
+    span.setAttribute('aria-label', 'ここから読み上げる：' + c.text);
     reader.append(span);
     pos = c.end;
   });
@@ -360,6 +391,13 @@ $('reader').addEventListener('click', (e) => {
   index = Number(i);
   paused = false;
   speakFrom(index);
+});
+
+$('reader').addEventListener('keydown', (e) => {
+  if (e.target.dataset?.i !== undefined && (e.key === 'Enter' || e.key === ' ')) {
+    e.preventDefault();
+    e.target.click();
+  }
 });
 
 function highlight(i) {
@@ -385,23 +423,39 @@ function play() {
 }
 
 function speakFrom(i) {
+  const voice = voices.find((v) => v.voiceURI === $('voice').value && v.localService === true);
+  if (!synth || !voice) {
+    stop();
+    $('speechStatus').textContent = '端末内の音声を選択してから、もう一度読み上げてください。';
+    return;
+  }
+  $('speechStatus').textContent = '';
   const gen = ++generation;
   synth.cancel();
   playing = true;
   updateButtons();
-  const voice = voices.find((v) => v.voiceURI === $('voice').value);
   const next = (n) => {
     if (gen !== generation) return;
     if (n >= chunks.length) { finish(); return; }
     index = n;
     highlight(n);
     const u = new SpeechSynthesisUtterance(chunks[n].text);
-    if (voice) { u.voice = voice; u.lang = voice.lang; } else { u.lang = 'ja-JP'; }
+    u.voice = voice;
+    u.lang = voice.lang;
     u.rate = Number($('rate').value);
     u.pitch = Number($('pitch').value);
     u.onend = () => next(n + 1);
-    u.onerror = (e) => { if (e.error !== 'interrupted' && e.error !== 'canceled') next(n + 1); };
-    synth.speak(u);
+    const fail = () => {
+      if (gen !== generation) return;
+      generation++;
+      synth.cancel();
+      playing = false;
+      paused = true;
+      $('speechStatus').textContent = '読み上げに失敗しました。音声や端末の設定を確認し、「続きから」で再試行してください。';
+      updateButtons();
+    };
+    u.onerror = fail;
+    try { synth.speak(u); } catch { fail(); }
   };
   next(i);
 }
@@ -435,7 +489,7 @@ function restartIfPlaying() {
 
 function updateButtons() {
   $('btnPlay').textContent = paused ? '▶ 続きから' : '▶ 読み上げ';
-  $('btnPlay').disabled = playing;
+  $('btnPlay').disabled = playing || !synth || !voices.length;
   $('btnPause').disabled = !playing;
   $('btnStop').disabled = !playing && !paused;
 }

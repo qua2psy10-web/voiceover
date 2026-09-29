@@ -24,7 +24,7 @@
       <h2>1. 文字を取り込む</h2>
       <div class="buttons">
         <button id="btnCapture" class="big" type="button">🖥 いまの画面を取り込む</button>
-        <label class="big button" for="fileInput">🖼 画像・スクショを選ぶ</label>
+        <button id="btnFile" class="big" type="button">🖼 画像・スクショを選ぶ</button>
         <input id="fileInput" type="file" accept="image/*" hidden>
         <button id="btnPaste" class="big" type="button">📋 貼り付け</button>
       </div>
@@ -46,7 +46,7 @@
           <button id="btnOcr" class="big primary" type="button">🔍 文字を読み取る</button>
           <button id="btnClearSel" type="button">囲みを消す</button>
         </div>
-        <div id="ocrStatus" class="status" hidden>
+        <div id="ocrStatus" class="status" role="status" hidden>
           <progress id="ocrProgress" max="1" value="0"></progress>
           <span id="ocrLabel"></span>
         </div>
@@ -56,7 +56,7 @@
     <!-- 2. テキスト -->
     <section class="card">
       <h2>2. 読み上げる文章</h2>
-      <textarea id="text" rows="8" placeholder="ここに読み取った文字が入ります。直接入力・貼り付けもできます。"></textarea>
+      <textarea aria-label="読み上げる文章" id="text" rows="8" placeholder="ここに読み取った文字が入ります。直接入力・貼り付けもできます。"></textarea>
       <div id="reader" class="reader" hidden></div>
     </section>
 
@@ -68,6 +68,8 @@
         <button id="btnPause" class="big" type="button" disabled>⏸ 一時停止</button>
         <button id="btnStop" class="big" type="button" disabled>⏹ 停止</button>
       </div>
+      <p id="speechStatus" role="status"></p>
+      <p id="voiceStatus" class="hint" role="status"></p>
       <div class="settings">
         <label>声
           <select id="voice"></select>
@@ -86,7 +88,7 @@
   </main>
 
   <footer>
-    <p>画像や文章はこの端末の中だけで処理され、外部には送信されません（初回のみ文字認識用のデータを取得します）。</p>
+    <p>画像の文字認識は端末内で行います。読み上げには、ブラウザが端末内音声と判定した音声だけを使用します。文字認識用のデータは必要に応じて取得します。</p>
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@7/dist/tesseract.min.js"></script>
